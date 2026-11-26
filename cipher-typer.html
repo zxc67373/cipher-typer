@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>乱码打字机</title>
+<style>
+  :root{
+    --bg:#0d0f14;
+    --panel:#141821;
+    --line:#252b38;
+    --text:#e9eef7;
+    --muted:#79839a;
+    --accent:#6ea8fe;
+    --sel:rgba(110,168,254,.20);
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;padding:18px;height:100vh;
+    display:flex;flex-direction:column;gap:14px;
+    background:radial-gradient(1100px 620px at 15% -12%,#1c2333 0%,var(--bg) 58%) fixed;
+    color:var(--text);overflow:hidden;
+    font:15px/1.5 "Segoe UI",system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  }
+
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex:0 0 auto;}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:15px;letter-spacing:.02em;}
+  .dot{width:9px;height:9px;border-radius:50%;background:#4ade80;box-shadow:0 0 12px #4ade80aa;}
+  .brand small{color:var(--muted);font-weight:400;font-size:12px;margin-left:2px;}
+  .tools{display:flex;gap:8px;}
+
+  button{
+    appearance:none;border:1px solid var(--line);background:rgba(255,255,255,.04);
+    color:var(--text);font:inherit;font-size:13px;padding:8px 14px;border-radius:10px;
+    cursor:pointer;display:inline-flex;align-items:center;gap:6px;
+    transition:.15s ease;user-select:none;
+  }
+  button:hover{background:rgba(255,255,255,.09);border-color:#39414f;}
+  button:active{transform:translateY(1px);}
+  button.on{background:rgba(110,168,254,.16);border-color:rgba(110,168,254,.55);color:#bcd5ff;}
+
+  .editor{
+    position:relative;flex:1 1 auto;min-height:0;
+    border:1px solid var(--line);border-radius:16px;background:var(--panel);
+    box-shadow:0 20px 50px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.03);
+    overflow:hidden;
+  }
+
+  .view{
+    position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;
+    padding:26px 30px 70px;
+    scrollbar-width:none;pointer-events:none;
+  }
+  .view::-webkit-scrollbar{display:none;}
+
+  .inner{
+    position:relative;
+    font-family:"Cascadia Code","JetBrains Mono",Consolas,"Courier New",monospace;
+    font-size:17px;line-height:1.8;
+    white-space:pre-wrap;word-break:break-all;
+    color:#cfd8e8;
+  }
+  #viewText{white-space:pre-wrap;word-break:break-all;}
+  #placeholder{
+    position:absolute;left:0;top:0;color:#4b5468;
+    pointer-events:none;user-select:none;white-space:nowrap;
+  }
+  #selLayer{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;}
+  .sel{position:absolute;background:var(--sel);border-radius:2px;}
+  #caret{
+    position:absolute;width:2px;border-radius:2px;background:var(--accent);
+    box-shadow:0 0 10px rgba(110,168,254,.9);
+    display:none;pointer-events:none;
+  }
+  #caret.blink{animation:blink 1.1s steps(1,end) infinite;}
+  @keyframes blink{0%,55%{opacity:1}56%,100%{opacity:0}}
+
+  #real{
+    position:absolute;inset:0;width:100%;height:100%;
+    padding:26px 30px 70px;margin:0;border:0;outline:0;resize:none;
+    background:transparent;
+    color:transparent;-webkit-text-fill-color:transparent;caret-color:transparent;
+    font-family:"Cascadia Code","JetBrains Mono",Consolas,"Courier New",monospace;
+    font-size:17px;line-height:1.8;
+    white-space:pre-wrap;word-break:break-all;
+    overflow:hidden;z-index:3;
+  }
+  #real::selection{background:transparent;}
+  #real::-moz-selection{background:transparent;}
+
+  .statusbar{
+    flex:0 0 auto;display:flex;justify-content:space-between;gap:12px;
+    padding:0 4px;font-size:12px;color:var(--muted);
+  }
+  .statusbar .hint{opacity:.85;}
+
+  .toast{
+    position:fixed;left:50%;bottom:34px;transform:translate(-50%,14px);
+    background:#1d2433;border:1px solid var(--line);color:var(--text);
+    padding:10px 18px;border-radius:12px;font-size:13px;
+    opacity:0;pointer-events:none;transition:.25s ease;
+    box-shadow:0 12px 30px rgba(0,0,0,.5);
+  }
+  .toast.show{opacity:1;transform:translate(-50%,0);}
+</style>
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="dot"></span>乱码打字机
+      <small>本地运行 · 数据不离开浏览器</small>
+    </div>
+    <div class="tools">
+      <button id="btnReveal" type="button">显示原文</button>
+      <button id="btnCopy" type="button">复制原文</button>
+      <button id="btnClear" type="button">清空</button>
+    </div>
+  </header>
+
+  <main class="editor">
+    <div class="view" id="view">
+      <div class="inner" id="inner">
+        <span id="viewText"></span>
+        <div id="selLayer"></div>
+        <div id="caret"></div>
+        <div id="placeholder">在这里开始输入…</div>
+      </div>
+    </div>
+    <textarea id="real" spellcheck="false" autocomplete="off"
+              autocorrect="off" autocapitalize="off"
+              aria-label="输入区"></textarea>
+  </main>
+
+  <footer class="statusbar">
+    <span id="count">0 字符</span>
+    <span class="hint">屏幕上是伪装文字 · Ctrl+A / Ctrl+C 复制到的是原文</span>
+  </footer>
+
+  <div id="toast" class="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var ta        = document.getElementById('real');
+  var view      = document.getElementById('view');
+  var inner     = document.getElementById('inner');
+  var viewText  = document.getElementById('viewText');
+  var selLayer  = document.getElementById('selLayer');
+  var caret     = document.getElementById('caret');
+  var placeholder = document.getElementById('placeholder');
+  var countEl   = document.getElementById('count');
+  var toastEl   = document.getElementById('toast');
+  var btnReveal = document.getElementById('btnReveal');
+  var btnCopy   = document.getElementById('btnCopy');
+  var btnClear  = document.getElementById('btnClear');
+
+  var LETTERS = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ';
+  var ALNUM   = LETTERS + '0123456789';
+  var SYMS    = '!@#$%^&*_+-=<>,.;:/?[]{}()';
+
+  var cache    = new Map();   // 字符 -> 固定伪装结果（保证已显示的内容不会闪变）
+  var rawMap   = [0];         // 真实文本下标 -> 伪装文本下标
+  var lastText = null;
+  var reveal   = false;
+  var toastTimer = 0;
+
+  /* ---------- 伪装映射 ---------- */
+
+  function rnd(s) { return s.charAt((Math.random() * s.length) | 0); }
+
+  function maskUnit(ch) {
+    var v = cache.get(ch);
+    if (v !== undefined) return v;
+
+    var out;
+    if (/\s/.test(ch)) {
+      out = ch;                               // 空白原样保留，保持排版
+    } else if (/[0-9]/.test(ch)) {
+      out = rnd(LETTERS);
+    } else if (/[A-Za-z]/.test(ch)) {
+      out = rnd(ALNUM);
+    } else {
+      var r = Math.random();
+      out = r < 0.68 ? rnd(LETTERS)
+          : r < 0.90 ? rnd('0123456789')
+          : rnd(SYMS);
+    }
+    cache.set(ch, out);
+    return out;
+  }
+
+  // 生成伪装串 + 下标映射。每个字符按 Unicode 码点处理，代理对整体映射。
+  function build(raw) {
+    var out = '';
+    var map = new Array(raw.length + 1);
+    var i = 0, vi = 0;
+
+    while (i < raw.length) {
+      var cp  = raw.codePointAt(i);
+      var len = cp > 0xFFFF ? 2 : 1;
+      var ch  = raw.substr(i, len);
+      var m   = maskUnit(ch);
+
+      map[i] = vi;
+      if (len === 2) map[i + 1] = vi;
+      out += m;
+      vi += m.length;
+      i += len;
+    }
+    map[raw.length] = vi;
+    return { text: out, map: map };
+  }
+
+  function ident(n) {
+    var m = new Array(n + 1);
+    for (var i = 0; i <= n; i++) m[i] = i;
+    return m;
+  }
+
+  function toView(idx) {
+    if (idx <= 0) return 0;
+    if (idx >= rawMap.length) return rawMap[rawMap.length - 1] || 0;
+    var v = rawMap[idx];
+    return v === undefined ? 0 : v;
+  }
+
+  /* ---------- 渲染 ---------- */
+
+  function render(force) {
+    var raw = ta.value;
+    var text;
+
+    if (reveal) {
+      text = raw;
+      rawMap = ident(raw.length);
+    } else {
+      var r = build(raw);
+      text = r.text;
+      rawMap = r.map;
+    }
+
+    if (force || text !== lastText) {
+      viewText.textContent = text;
+      lastText = text;
+    }
+
+    placeholder.style.display = raw.length ? 'none' : 'block';
+    countEl.textContent = raw.length + ' 字符';
+  }
+
+  function lineHeight() {
+    var lh = parseFloat(getComputedStyle(inner).lineHeight);
+    return isFinite(lh) ? lh : 30;
+  }
+
+  function caretRectAt(vi) {
+    var lh = lineHeight();
+    var node = viewText.firstChild;
+    if (!node) return { left: 0, top: 0, height: lh };
+
+    var base = inner.getBoundingClientRect();
+    var len  = node.nodeValue.length;
+    vi = Math.max(0, Math.min(vi, len));
+
+    function rectsOf(a, b) {
+      var r = document.createRange();
+      r.setStart(node, a);
+      r.setEnd(node, b);
+      return r.getClientRects();
+    }
+
+    if (vi < len) {
+      var rects = rectsOf(vi, vi + 1);
+      for (var i = 0; i < rects.length; i++) {
+        var rc = rects[i];
+        if (rc.width > 0.5) {
+          return {
+            left: rc.left - base.left,
+            top: rc.top - base.top - (lh - rc.height) / 2,
+            height: lh
+          };
+        }
+      }
+    }
+    if (vi > 0) {
+      var back = rectsOf(vi - 1, vi);
+      if (back.length) {
+        var rc2 = back[back.length - 1];
+        return {
+          left: rc2.right - base.left,
+          top: rc2.top - base.top - (lh - rc2.height) / 2,
+          height: lh
+        };
+      }
+    }
+    return { left: 0, top: 0, height: lh };
+  }
+
+  function updateCursor() {
+    var s = ta.selectionStart;
+    var e = ta.selectionEnd;
+    var focused = (document.activeElement === ta);
+
+    // 光标
+    if (focused) {
+      var dir   = ta.selectionDirection;
+      var focus = (dir === 'backward') ? s : e;
+      var pos   = caretRectAt(toView(focus));
+
+      caret.style.display = 'block';
+      caret.style.left    = pos.left + 'px';
+      caret.style.top     = pos.top + 'px';
+      caret.style.height  = pos.height + 'px';
+      caret.classList.remove('blink');
+      void caret.offsetWidth;          // 重置闪烁动画
+      caret.classList.add('blink');
+    } else {
+      caret.style.display = 'none';
+    }
+
+    // 选区
+    selLayer.textContent = '';
+    if (s !== e) {
+      var node = viewText.firstChild;
+      if (node) {
+        var a = toView(Math.min(s, e));
+        var b = toView(Math.max(s, e));
+        if (b > a) {
+          var range = document.createRange();
+          range.setStart(node, a);
+          range.setEnd(node, b);
+
+          var base  = inner.getBoundingClientRect();
+          var rects = range.getClientRects();
+          var frag  = document.createDocumentFragment();
+
+          for (var i = 0; i < rects.length; i++) {
+            var rc = rects[i];
+            if (rc.width <= 0 && rc.height <= 0) continue;
+            var d = document.createElement('div');
+            d.className = 'sel';
+            d.style.left   = (rc.left - base.left) + 'px';
+            d.style.top    = (rc.top - base.top) + 'px';
+            d.style.width  = Math.max(rc.width, 2) + 'px';
+            d.style.height = rc.height + 'px';
+            frag.appendChild(d);
+          }
+          selLayer.appendChild(frag);
+        }
+      }
+    }
+  }
+
+  function ensureVisible() {
+    var top = parseFloat(caret.style.top);
+    var h   = parseFloat(caret.style.height);
+    if (!isFinite(top)) return;
+
+    var vh = view.clientHeight;
+    var st = view.scrollTop;
+    var m  = 34;
+
+    if (top < st + m) {
+      view.scrollTop = Math.max(0, top - m);
+    } else if (top + h > st + vh - m) {
+      view.scrollTop = top + h - vh + m;
+    }
+  }
+
+  /* ---------- 事件 ---------- */
+
+  function onEdit() {
+    render(false);
+    updateCursor();
+    ensureVisible();
+  }
+
+  ta.addEventListener('input', onEdit);
+  ta.addEventListener('compositionupdate', onEdit);
+  ta.addEventListener('compositionend', onEdit);
+
+  ta.addEventListener('focus', function () { updateCursor(); });
+
+  ta.addEventListener('blur', function () {
+    caret.style.display = 'none';
+    selLayer.textContent = '';
+  });
+
+  document.addEventListener('selectionchange', function () {
+    if (document.activeElement === ta) updateCursor();
+  });
+
+  window.addEventListener('resize', function () { updateCursor(); });
+
+  // 滚轮作用在显示层上
+  ta.addEventListener('wheel', function (e) {
+    e.preventDefault();
+    var unit = e.deltaMode === 1 ? 18 : (e.deltaMode === 2 ? view.clientHeight : 1);
+    view.scrollTop  += e.deltaY * unit;
+    view.scrollLeft += e.deltaX * unit;
+  }, { passive: false });
+
+  /* ---------- 工具条 ---------- */
+
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () {
+      toastEl.classList.remove('show');
+    }, 1800);
+  }
+
+  btnReveal.addEventListener('click', function () {
+    reveal = !reveal;
+    btnReveal.classList.toggle('on', reveal);
+    btnReveal.textContent = reveal ? '隐藏原文' : '显示原文';
+    render(true);          // 切换模式后强制重绘（即使伪装串恰好相同）
+    updateCursor();
+    ta.focus();
+  });
+
+  btnCopy.addEventListener('click', function () {
+    var text = ta.value;
+    if (!text) { toast('还没有内容'); ta.focus(); return; }
+
+    function notify() {
+      toast('已复制原文 ' + Array.from(text).length + ' 字');
+      ta.focus();
+    }
+    function fallback() {
+      var tmp = document.createElement('textarea');
+      tmp.value = text;
+      tmp.style.cssText = 'position:fixed;top:-1000px;left:-1000px;opacity:0';
+      document.body.appendChild(tmp);
+      tmp.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (err) { ok = false; }
+      document.body.removeChild(tmp);
+      if (ok) notify();
+      else { toast('复制失败，请手动 Ctrl+A 再 Ctrl+C'); ta.focus(); }
+    }
+
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(notify, fallback);
+    } else {
+      fallback();
+    }
+  });
+
+  btnClear.addEventListener('click', function () {
+    if (!ta.value) { toast('已经是空的了'); ta.focus(); return; }
+    if (!confirm('确定清空全部内容吗？')) { ta.focus(); return; }
+    ta.value = '';
+    render(true);
+    updateCursor();
+    toast('已清空');
+    ta.focus();
+  });
+
+  /* ---------- 启动 ---------- */
+
+  ta.focus();
+  render(true);
+  updateCursor();
+
+})();
+</script>
+</body>
+</html>
